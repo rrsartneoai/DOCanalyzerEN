@@ -8,6 +8,8 @@ import { Progress } from "@/components/ui/progress"
 import { FileText, Upload, Clock, CheckCircle, AlertCircle, BarChart3, CreditCard, Settings } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useTranslation } from "@/lib/i18n"
+import { LanguageSelector } from "@/components/language-selector"
 
 interface Order {
   id: string
@@ -34,7 +36,15 @@ export default function DashboardPage() {
     totalSpent: 0,
   })
   const [isLoading, setIsLoading] = useState(true)
+  const [language, setLanguage] = useState("pl")
   const router = useRouter()
+
+  useEffect(() => {
+    const savedLanguage = localStorage.getItem("language") || "pl"
+    setLanguage(savedLanguage)
+  }, [])
+
+  const { t } = useTranslation(language)
 
   useEffect(() => {
     const token = localStorage.getItem("token")
@@ -48,7 +58,7 @@ export default function DashboardPage() {
       setOrders([
         {
           id: "1",
-          title: "Financial Report Analysis",
+          title: t("analysis_type") === "Typ analizy" ? "Analiza raportu finansowego" : "Financial Report Analysis",
           status: "completed",
           createdAt: "2024-01-15T10:30:00Z",
           documentsCount: 3,
@@ -56,7 +66,7 @@ export default function DashboardPage() {
         },
         {
           id: "2",
-          title: "Legal Contract Review",
+          title: t("analysis_type") === "Typ analizy" ? "Przegląd umowy prawnej" : "Legal Contract Review",
           status: "processing",
           createdAt: "2024-01-14T14:20:00Z",
           documentsCount: 5,
@@ -64,7 +74,7 @@ export default function DashboardPage() {
         },
         {
           id: "3",
-          title: "Market Research Documents",
+          title: t("analysis_type") === "Typ analizy" ? "Dokumenty badań rynku" : "Market Research Documents",
           status: "pending",
           createdAt: "2024-01-13T09:15:00Z",
           documentsCount: 2,
@@ -81,7 +91,7 @@ export default function DashboardPage() {
 
       setIsLoading(false)
     }, 1000)
-  }, [router])
+  }, [router, t])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -113,12 +123,27 @@ export default function DashboardPage() {
     }
   }
 
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "completed":
+        return t("completed")
+      case "processing":
+        return t("processing")
+      case "pending":
+        return t("pending")
+      case "failed":
+        return t("failed")
+      default:
+        return status
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading dashboard...</p>
+          <p className="text-gray-600">{t("loading")}</p>
         </div>
       </div>
     )
@@ -134,9 +159,10 @@ export default function DashboardPage() {
             <span className="text-2xl font-bold text-gray-900">DocAnalyzer</span>
           </div>
           <nav className="flex items-center space-x-4">
+            <LanguageSelector onLanguageChange={setLanguage} />
             <Button variant="ghost" size="sm">
               <Settings className="h-4 w-4 mr-2" />
-              Settings
+              {t("settings")}
             </Button>
             <Button
               variant="ghost"
@@ -146,7 +172,7 @@ export default function DashboardPage() {
                 router.push("/")
               }}
             >
-              Logout
+              {t("logout")}
             </Button>
           </nav>
         </div>
@@ -157,47 +183,47 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("total_orders")}</CardTitle>
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.totalOrders}</div>
-              <p className="text-xs text-muted-foreground">+2 from last month</p>
+              <p className="text-xs text-muted-foreground">+2 {t("from_last_month")}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Completed</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("completed")}</CardTitle>
               <CheckCircle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.completedOrders}</div>
               <p className="text-xs text-muted-foreground">
-                {Math.round((stats.completedOrders / stats.totalOrders) * 100)}% completion rate
+                {Math.round((stats.completedOrders / stats.totalOrders) * 100)}% {t("completion_rate")}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("pending")}</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.pendingOrders}</div>
-              <p className="text-xs text-muted-foreground">In queue for processing</p>
+              <p className="text-xs text-muted-foreground">{t("in_queue")}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Spent</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("total_spent")}</CardTitle>
               <CreditCard className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">${stats.totalSpent}</div>
-              <p className="text-xs text-muted-foreground">This month: $79.97</p>
+              <p className="text-xs text-muted-foreground">{t("this_month")}: $79.97</p>
             </CardContent>
           </Card>
         </div>
@@ -209,13 +235,13 @@ export default function DashboardPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle>Recent Orders</CardTitle>
-                  <CardDescription>Your latest document analysis orders</CardDescription>
+                  <CardTitle>{t("recent_orders")}</CardTitle>
+                  <CardDescription>{t("latest_orders")}</CardDescription>
                 </div>
                 <Button asChild>
                   <Link href="/orders/new">
                     <Upload className="h-4 w-4 mr-2" />
-                    New Order
+                    {t("new_order")}
                   </Link>
                 </Button>
               </CardHeader>
@@ -228,15 +254,15 @@ export default function DashboardPage() {
                         <div>
                           <h3 className="font-medium">{order.title}</h3>
                           <p className="text-sm text-gray-600">
-                            {order.documentsCount} documents • {new Date(order.createdAt).toLocaleDateString()}
+                            {order.documentsCount} {t("documents")} • {new Date(order.createdAt).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-4">
-                        <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+                        <Badge className={getStatusColor(order.status)}>{getStatusText(order.status)}</Badge>
                         <span className="font-medium">${order.price}</span>
                         <Button variant="outline" size="sm" asChild>
-                          <Link href={`/orders/${order.id}`}>View</Link>
+                          <Link href={`/orders/${order.id}`}>{t("view")}</Link>
                         </Button>
                       </div>
                     </div>
@@ -250,25 +276,25 @@ export default function DashboardPage() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
+                <CardTitle>{t("quick_actions")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Button className="w-full" asChild>
                   <Link href="/orders/new">
                     <Upload className="h-4 w-4 mr-2" />
-                    Upload Documents
+                    {t("upload_documents")}
                   </Link>
                 </Button>
                 <Button variant="outline" className="w-full bg-transparent" asChild>
                   <Link href="/orders">
                     <FileText className="h-4 w-4 mr-2" />
-                    View All Orders
+                    {t("view_all_orders")}
                   </Link>
                 </Button>
                 <Button variant="outline" className="w-full bg-transparent" asChild>
                   <Link href="/billing">
                     <CreditCard className="h-4 w-4 mr-2" />
-                    Billing & Usage
+                    {t("billing_usage")}
                   </Link>
                 </Button>
               </CardContent>
@@ -276,20 +302,20 @@ export default function DashboardPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Usage This Month</CardTitle>
+                <CardTitle>{t("usage_this_month")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div>
                     <div className="flex justify-between text-sm mb-2">
-                      <span>Documents Processed</span>
+                      <span>{t("documents_processed")}</span>
                       <span>23/100</span>
                     </div>
                     <Progress value={23} />
                   </div>
                   <div>
                     <div className="flex justify-between text-sm mb-2">
-                      <span>Storage Used</span>
+                      <span>{t("storage_used")}</span>
                       <span>1.2GB/5GB</span>
                     </div>
                     <Progress value={24} />

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,6 +12,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { FileText, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useTranslation } from "@/lib/i18n"
+import { LanguageSelector } from "@/components/language-selector"
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -27,7 +29,15 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [language, setLanguage] = useState("pl")
   const router = useRouter()
+
+  useEffect(() => {
+    const savedLanguage = localStorage.getItem("language") || "pl"
+    setLanguage(savedLanguage)
+  }, [])
+
+  const { t } = useTranslation(language)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -40,13 +50,13 @@ export default function RegisterPage() {
     setError("")
 
     if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match")
+      setError(t("passwords_not_match"))
       setIsLoading(false)
       return
     }
 
     if (!formData.agreeToTerms) {
-      setError("Please agree to the terms and conditions")
+      setError(t("agree_terms_required"))
       setIsLoading(false)
       return
     }
@@ -72,10 +82,10 @@ export default function RegisterPage() {
         localStorage.setItem("token", data.token)
         router.push("/dashboard")
       } else {
-        setError(data.message || "Registration failed")
+        setError(data.message || t("registration_failed"))
       }
     } catch (err) {
-      setError("Network error. Please try again.")
+      setError(t("network_error"))
     } finally {
       setIsLoading(false)
     }
@@ -85,11 +95,14 @@ export default function RegisterPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <FileText className="h-12 w-12 text-blue-600" />
+          <div className="flex justify-center items-center space-x-4 mb-4">
+            <div className="flex items-center space-x-2">
+              <FileText className="h-12 w-12 text-blue-600" />
+            </div>
+            <LanguageSelector onLanguageChange={setLanguage} />
           </div>
-          <CardTitle className="text-2xl">Create Account</CardTitle>
-          <CardDescription>Join DocAnalyzer and start analyzing documents</CardDescription>
+          <CardTitle className="text-2xl">{t("create_account")}</CardTitle>
+          <CardDescription>{t("join_docanalyzer")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -101,22 +114,22 @@ export default function RegisterPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="firstName">First Name</Label>
+                <Label htmlFor="firstName">{t("first_name")}</Label>
                 <Input
                   id="firstName"
                   name="firstName"
-                  placeholder="John"
+                  placeholder={t("first_name")}
                   value={formData.firstName}
                   onChange={handleInputChange}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name</Label>
+                <Label htmlFor="lastName">{t("last_name")}</Label>
                 <Input
                   id="lastName"
                   name="lastName"
-                  placeholder="Doe"
+                  placeholder={t("last_name")}
                   value={formData.lastName}
                   onChange={handleInputChange}
                   required
@@ -125,12 +138,12 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("email")}</Label>
               <Input
                 id="email"
                 name="email"
                 type="email"
-                placeholder="john@example.com"
+                placeholder={t("email")}
                 value={formData.email}
                 onChange={handleInputChange}
                 required
@@ -138,24 +151,24 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="company">Company (Optional)</Label>
+              <Label htmlFor="company">{t("company")}</Label>
               <Input
                 id="company"
                 name="company"
-                placeholder="Your company name"
+                placeholder={t("company")}
                 value={formData.company}
                 onChange={handleInputChange}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("password")}</Label>
               <div className="relative">
                 <Input
                   id="password"
                   name="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Create a strong password"
+                  placeholder={t("password")}
                   value={formData.password}
                   onChange={handleInputChange}
                   required
@@ -173,13 +186,13 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Label htmlFor="confirmPassword">{t("confirm_password")}</Label>
               <div className="relative">
                 <Input
                   id="confirmPassword"
                   name="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
-                  placeholder="Confirm your password"
+                  placeholder={t("confirm_password")}
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
                   required
@@ -203,27 +216,27 @@ export default function RegisterPage() {
                 onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, agreeToTerms: checked as boolean }))}
               />
               <Label htmlFor="terms" className="text-sm">
-                I agree to the{" "}
+                {t("agree_terms")}{" "}
                 <Link href="/terms" className="text-blue-600 hover:underline">
-                  Terms of Service
+                  {t("terms_service")}
                 </Link>{" "}
-                and{" "}
+                {t("privacy_policy").toLowerCase()}{" "}
                 <Link href="/privacy" className="text-blue-600 hover:underline">
-                  Privacy Policy
+                  {t("privacy_policy")}
                 </Link>
               </Label>
             </div>
 
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Creating account..." : "Create Account"}
+              {isLoading ? t("creating_account") : t("create_account")}
             </Button>
           </form>
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
-              Already have an account?{" "}
+              {t("already_have_account")}{" "}
               <Link href="/auth/login" className="text-blue-600 hover:underline">
-                Sign in
+                {t("sign_in")}
               </Link>
             </p>
           </div>

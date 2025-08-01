@@ -20,6 +20,7 @@ import {
   Lightbulb,
 } from "lucide-react"
 import Link from "next/link"
+import { useTranslation } from "@/lib/i18n"
 
 interface AnalysisData {
   orderId: string
@@ -66,6 +67,14 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
+  const [language, setLanguage] = useState("pl")
+
+  useEffect(() => {
+    const savedLanguage = localStorage.getItem("language") || "pl"
+    setLanguage(savedLanguage)
+  }, [])
+
+  const { t } = useTranslation(language)
 
   useEffect(() => {
     const fetchAnalysis = async () => {
@@ -86,10 +95,10 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
         if (response.ok) {
           setAnalysisData(data.analysis)
         } else {
-          setError(data.message || "Failed to fetch analysis")
+          setError(data.message || t("analysis_not_found"))
         }
       } catch (err) {
-        setError("Network error. Please try again.")
+        setError(t("network_error"))
       } finally {
         setIsLoading(false)
       }
@@ -105,7 +114,7 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [params.id, analysisData?.status])
+  }, [params.id, analysisData?.status, t])
 
   const getSentimentColor = (sentiment?: string) => {
     switch (sentiment) {
@@ -120,10 +129,38 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
     }
   }
 
+  const getSentimentText = (sentiment?: string) => {
+    switch (sentiment) {
+      case "positive":
+        return t("positive")
+      case "negative":
+        return t("negative")
+      case "neutral":
+        return t("neutral")
+      default:
+        return t("neutral")
+    }
+  }
+
   const getConfidenceColor = (score: number) => {
     if (score >= 0.8) return "text-green-600"
     if (score >= 0.6) return "text-yellow-600"
     return "text-red-600"
+  }
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "completed":
+        return t("completed")
+      case "processing":
+        return t("processing")
+      case "pending":
+        return t("pending")
+      case "failed":
+        return t("failed")
+      default:
+        return status
+    }
   }
 
   if (isLoading) {
@@ -131,7 +168,7 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading analysis results...</p>
+          <p className="text-gray-600">{t("loading")}</p>
         </div>
       </div>
     )
@@ -144,10 +181,10 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
           <CardContent className="pt-6">
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>{error || "Analysis not found"}</AlertDescription>
+              <AlertDescription>{error || t("analysis_not_found")}</AlertDescription>
             </Alert>
             <Button className="w-full mt-4" asChild>
-              <Link href="/dashboard">Back to Dashboard</Link>
+              <Link href="/dashboard">{t("back_to_dashboard")}</Link>
             </Button>
           </CardContent>
         </Card>
@@ -190,12 +227,14 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
             <Button variant="ghost" size="sm" asChild className="mr-4">
               <Link href="/dashboard">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Dashboard
+                {t("back_to_dashboard")}
               </Link>
             </Button>
             <div>
               <h1 className="text-xl font-semibold">{analysisData.title}</h1>
-              <p className="text-sm text-gray-600">Analysis Results • {analysisData.analysisType.replace("-", " ")}</p>
+              <p className="text-sm text-gray-600">
+                {t("analysis_results")} • {t(analysisData.analysisType.replace("-", "_"))}
+              </p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -208,11 +247,11 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
                     : "bg-yellow-100 text-yellow-800"
               }
             >
-              {analysisData.status}
+              {getStatusText(analysisData.status)}
             </Badge>
             <Button size="sm">
               <Download className="h-4 w-4 mr-2" />
-              Export Report
+              {t("export_report")}
             </Button>
           </div>
         </div>
@@ -223,9 +262,7 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
         {analysisData.status === "processing" && (
           <Alert className="mb-6">
             <Brain className="h-4 w-4" />
-            <AlertDescription>
-              Analysis is still in progress. Results will update automatically as documents are processed.
-            </AlertDescription>
+            <AlertDescription>{t("analysis_in_progress")}</AlertDescription>
           </Alert>
         )}
 
@@ -233,49 +270,49 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Documents</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("documents")}</CardTitle>
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{analysisData.summary.totalDocuments}</div>
-              <p className="text-xs text-muted-foreground">Files analyzed</p>
+              <p className="text-xs text-muted-foreground">{t("files_analyzed")}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Confidence</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("confidence")}</CardTitle>
               <Target className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${getConfidenceColor(analysisData.summary.averageConfidence)}`}>
                 {Math.round(analysisData.summary.averageConfidence * 100)}%
               </div>
-              <p className="text-xs text-muted-foreground">Average confidence</p>
+              <p className="text-xs text-muted-foreground">{t("average_confidence")}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Key Points</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("key_insights")}</CardTitle>
               <Lightbulb className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{combinedResults.keyPoints.length}</div>
-              <p className="text-xs text-muted-foreground">Insights found</p>
+              <p className="text-xs text-muted-foreground">{t("insights_found")}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Sentiment</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("sentiment")}</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <Badge className={getSentimentColor(combinedResults.sentiment)}>
-                {combinedResults.sentiment || "Neutral"}
+                {getSentimentText(combinedResults.sentiment)}
               </Badge>
-              <p className="text-xs text-muted-foreground mt-1">Overall tone</p>
+              <p className="text-xs text-muted-foreground mt-1">{t("overall_tone")}</p>
             </CardContent>
           </Card>
         </div>
@@ -283,18 +320,18 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
         {/* Analysis Results */}
         <Tabs defaultValue="summary" className="space-y-6">
           <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="summary">Summary</TabsTrigger>
-            <TabsTrigger value="insights">Key Insights</TabsTrigger>
-            <TabsTrigger value="data">Data Points</TabsTrigger>
-            <TabsTrigger value="risks">Risk Factors</TabsTrigger>
-            <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
+            <TabsTrigger value="summary">{t("summary")}</TabsTrigger>
+            <TabsTrigger value="insights">{t("key_insights")}</TabsTrigger>
+            <TabsTrigger value="data">{t("data_points")}</TabsTrigger>
+            <TabsTrigger value="risks">{t("risk_factors")}</TabsTrigger>
+            <TabsTrigger value="recommendations">{t("recommendations")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="summary" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Executive Summary</CardTitle>
-                <CardDescription>Comprehensive overview of your document analysis</CardDescription>
+                <CardTitle>{t("executive_summary")}</CardTitle>
+                <CardDescription>{t("comprehensive_overview")}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="prose max-w-none">
@@ -305,7 +342,7 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Document Overview</CardTitle>
+                <CardTitle>{t("document_overview")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -316,13 +353,13 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
                         <div>
                           <p className="font-medium">{doc.original_name}</p>
                           <p className="text-sm text-gray-600">
-                            {(doc.file_size / 1024 / 1024).toFixed(2)} MB • {doc.file_type}
+                            {(doc.file_size / 1024 / 1024).toFixed(2)} {t("mb")} • {doc.file_type}
                           </p>
                         </div>
                       </div>
                       <Badge variant="outline">
                         <CheckCircle className="h-3 w-3 mr-1" />
-                        Analyzed
+                        {t("analyzed")}
                       </Badge>
                     </div>
                   ))}
@@ -334,8 +371,8 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
           <TabsContent value="insights" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Key Insights</CardTitle>
-                <CardDescription>Important findings and observations from your documents</CardDescription>
+                <CardTitle>{t("key_insights")}</CardTitle>
+                <CardDescription>{t("important_findings")}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -352,8 +389,8 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
             {combinedResults.entities && combinedResults.entities.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Entities Identified</CardTitle>
-                  <CardDescription>Key entities, names, and concepts found in your documents</CardDescription>
+                  <CardTitle>{t("entities_identified")}</CardTitle>
+                  <CardDescription>{t("key_entities")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -364,7 +401,9 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
                           <Badge variant="outline">{entity.type}</Badge>
                         </div>
                         <Progress value={entity.confidence * 100} className="h-2" />
-                        <p className="text-xs text-gray-600 mt-1">{Math.round(entity.confidence * 100)}% confidence</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          {Math.round(entity.confidence * 100)}% {t("confidence")}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -377,8 +416,8 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
             {combinedResults.financialData && combinedResults.financialData.length > 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle>Financial Data</CardTitle>
-                  <CardDescription>Key financial metrics and data points extracted from your documents</CardDescription>
+                  <CardTitle>{t("financial_data")}</CardTitle>
+                  <CardDescription>{t("financial_metrics")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
@@ -399,10 +438,8 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
                 <CardContent className="pt-6">
                   <div className="text-center py-8">
                     <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">No specific data points were extracted from your documents.</p>
-                    <p className="text-sm text-gray-500 mt-2">
-                      This may be normal depending on your document type and analysis method.
-                    </p>
+                    <p className="text-gray-600">{t("no_data_points")}</p>
+                    <p className="text-sm text-gray-500 mt-2">{t("normal_depending")}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -413,8 +450,8 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
             {combinedResults.riskFactors && combinedResults.riskFactors.length > 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle>Risk Factors</CardTitle>
-                  <CardDescription>Potential risks and concerns identified in your documents</CardDescription>
+                  <CardTitle>{t("risk_factors")}</CardTitle>
+                  <CardDescription>{t("potential_risks")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
@@ -432,10 +469,8 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
                 <CardContent className="pt-6">
                   <div className="text-center py-8">
                     <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" />
-                    <p className="text-gray-600">No significant risk factors were identified.</p>
-                    <p className="text-sm text-gray-500 mt-2">
-                      Your documents appear to be free of major concerns based on the analysis performed.
-                    </p>
+                    <p className="text-gray-600">{t("no_risk_factors")}</p>
+                    <p className="text-sm text-gray-500 mt-2">{t("documents_appear_free")}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -446,8 +481,8 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
             {combinedResults.recommendations && combinedResults.recommendations.length > 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle>Recommendations</CardTitle>
-                  <CardDescription>Actionable recommendations based on the analysis results</CardDescription>
+                  <CardTitle>{t("recommendations")}</CardTitle>
+                  <CardDescription>{t("actionable_recommendations")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
@@ -465,10 +500,8 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
                 <CardContent className="pt-6">
                   <div className="text-center py-8">
                     <Lightbulb className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">No specific recommendations were generated.</p>
-                    <p className="text-sm text-gray-500 mt-2">
-                      The analysis may not have identified areas requiring specific action items.
-                    </p>
+                    <p className="text-gray-600">{t("no_recommendations")}</p>
+                    <p className="text-sm text-gray-500 mt-2">{t("no_specific_actions")}</p>
                   </div>
                 </CardContent>
               </Card>
