@@ -1,72 +1,48 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase"
-import jwt from "jsonwebtoken"
+import { NextResponse } from "next/server"
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
+import { analyzeDocument } from "@/lib/document-processor"
+import type { Database } from "@/lib/database.types"
 
-const JWT_SECRET = process.env.JWT_SECRET!
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const supabase = createRouteHandlerClient<Database>({ cookies })
+  const orderId = params.id
 
-function verifyToken(request: NextRequest) {
-  const authHeader = request.headers.get("authorization")
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return null
-  }
-
-  const token = authHeader.substring(7)
   try {
-    return jwt.verify(token, JWT_SECRET) as any
-  } catch (error) {
-    return null
-  }
-}
-
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const user = verifyToken(request)
-    if (!user) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    }
-
-    const supabase = createServerClient()
-
-    // Get order with analyses and documents
+    // Fetch the document URL from the order
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select(`
-        *,
-        documents(*),
-        analyses(*)
-      `)
-      .eq("id", params.id)
-      .eq("user_id", user.userId)
+      .select("document_url")
+      .eq("id", orderId)
       .single()
 
-    if (orderError || !order) {
-      return NextResponse.json({ message: "Order not found" }, { status: 404 })
+    if (orderError || !order?.document_url) {
+      console.error("Error fetching document URL:", orderError)
+      return NextResponse.json({ error: "Document not found for this order." }, { status: 404 })
     }
 
-    // Combine all analysis results
-    const combinedAnalysis = {
-      orderId: order.id,
-      title: order.title,
-      analysisType: order.analysis_type,
-      status: order.status,
-      documents: order.documents,
-      analyses: order.analyses,
-      summary: {
-        totalDocuments: order.documents?.length || 0,
-        averageConfidence:
-          order.analyses?.length > 0
-            ? order.analyses.reduce((sum: number, analysis: any) => sum + (analysis.confidence_score || 0), 0) /
-              order.analyses.length
-            : 0,
-        completedAt: order.status === "completed" ? order.updated_at : null,
-      },
+    // Perform document analysis
+    const analysisResult = await analyzeDocument(order.document_url)
+
+    // Update the order with the analysis result
+    const { data, error } = await supabase
+      .from("orders")
+      .update({
+        analysis_result: analysisResult,
+        status: "analyzed",
+      })
+      .eq("id", orderId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error updating order with analysis result:", error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({
-      analysis: combinedAnalysis,
-    })
+    return NextResponse.json(data)
   } catch (error) {
-    console.error("Get analysis error:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    console.error("[DOCUMENT_ANALYSIS_ERROR]", error)
+    return NextResponse.json({ error: "Failed to perform document analysis." }, { status: 500 })
   }
 }

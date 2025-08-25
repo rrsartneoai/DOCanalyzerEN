@@ -1,69 +1,27 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase"
-import { stripe } from "@/lib/stripe"
-import jwt from "jsonwebtoken"
+import { NextResponse } from "next/server"
+import Stripe from "stripe"
 
-const JWT_SECRET = process.env.JWT_SECRET!
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-04-10",
+})
 
-function verifyToken(request: NextRequest) {
-  const authHeader = request.headers.get("authorization")
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return null
-  }
-
-  const token = authHeader.substring(7)
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
-    return jwt.verify(token, JWT_SECRET) as any
-  } catch (error) {
-    return null
-  }
-}
+    const { amount } = await req.json()
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const user = verifyToken(request)
-    if (!user) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    if (!amount || typeof amount !== "number" || amount <= 0) {
+      return new NextResponse("Invalid amount", { status: 400 })
     }
 
-    const supabase = createServerClient()
-
-    // Get order details
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("*, users(*)")
-      .eq("id", params.id)
-      .eq("user_id", user.userId)
-      .single()
-
-    if (orderError || !order) {
-      return NextResponse.json({ message: "Order not found" }, { status: 404 })
-    }
-
-    // Create Stripe PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: order.price, // Price is already in cents
+      amount: Math.round(amount * 100), // amount in cents
       currency: "usd",
-      customer: order.users.stripe_customer_id,
-      metadata: {
-        orderId: order.id,
-        userId: user.userId,
-        analysisType: order.analysis_type,
-      },
-      automatic_payment_methods: {
-        enabled: true,
-      },
+      metadata: { orderId: params.id },
     })
 
-    // Update order with payment intent ID
-    await supabase.from("orders").update({ stripe_payment_intent_id: paymentIntent.id }).eq("id", order.id)
-
-    return NextResponse.json({
-      clientSecret: paymentIntent.client_secret,
-      paymentIntentId: paymentIntent.id,
-    })
+    return NextResponse.json({ clientSecret: paymentIntent.client_secret })
   } catch (error) {
-    console.error("Payment intent error:", error)
-    return NextResponse.json({ message: "Failed to create payment intent" }, { status: 500 })
+    console.error("[PAYMENT_INTENT_ERROR]", error)
+    return new NextResponse("Internal Error", { status: 500 })
   }
 }

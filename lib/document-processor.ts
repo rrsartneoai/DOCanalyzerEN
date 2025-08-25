@@ -1,65 +1,115 @@
-import pdfParse from "pdf-parse"
-import mammoth from "mammoth"
-import * as XLSX from "xlsx"
+import { generateChatCompletionWithOpenAI } from "./openai"
+import { generateTextWithGemini, generateTextWithGeminiVision } from "./gemini"
+import type OpenAI from "openai"
 
-export async function extractTextFromFile(buffer: Buffer, filename: string, mimeType: string): Promise<string> {
+export type AnalysisResult = {
+  summary: string | null
+  keywords: string[] | null
+  sentiment: string | null
+  extractedData: Record<string, any> | null
+  rawResponse: string | null
+  modelUsed: "openai" | "gemini" | "gemini-vision" | "none"
+}
+
+// Helper to convert file to base64 for Gemini Vision
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = () => {
+      const base64String = (reader.result as string).split(",")[1]
+      resolve(base64String)
+    }
+    reader.onerror = (error) => reject(error)
+  })
+}
+
+export async function analyzeDocument(
+  documentContent: string | File, // Can be text content or a File object
+  options?: {
+    model?: "openai" | "gemini" | "gemini-vision"
+    prompt?: string
+  },
+): Promise<AnalysisResult> {
+  const defaultPrompt = `Analyze the following document content. Provide a concise summary, extract key keywords (comma-separated), determine the overall sentiment (positive, neutral, negative), and identify any structured data like names, dates, or amounts. Format the output as a JSON object with keys: summary, keywords, sentiment, extractedData.`
+
+  const modelToUse = options?.model || "openai" // Default to OpenAI
+  const analysisPrompt = options?.prompt || defaultPrompt
+
+  let rawResponse: string | null = null
+  let modelUsed: AnalysisResult["modelUsed"] = "none"
+
   try {
-    if (mimeType === "application/pdf") {
-      const data = await pdfParse(buffer)
-      return data.text
+    if (modelToUse === "openai") {
+      modelUsed = "openai"
+      const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+        { role: "system", content: analysisPrompt },
+        {
+          role: "user",
+          content: typeof documentContent === "string" ? documentContent : `Document file: ${documentContent.name}`,
+        },
+      ]
+      rawResponse = await generateChatCompletionWithOpenAI(messages)
+    } else if (modelToUse === "gemini") {
+      modelUsed = "gemini"
+      rawResponse = await generateTextWithGemini(`${analysisPrompt}\n\nDocument: ${documentContent}`)
+    } else if (modelToUse === "gemini-vision" && documentContent instanceof File) {
+      modelUsed = "gemini-vision"
+      const base64Image = await fileToBase64(documentContent)
+      const imagePart = {
+        inlineData: {
+          data: base64Image,
+          mimeType: documentContent.type,
+        },
+      }
+      rawResponse = await generateTextWithGeminiVision(analysisPrompt, [imagePart])
+    } else if (modelToUse === "gemini-vision" && typeof documentContent === "string") {
+      console.warn("Gemini Vision model requires a File object for image analysis. Falling back to Gemini text model.")
+      modelUsed = "gemini"
+      rawResponse = await generateTextWithGemini(`${analysisPrompt}\n\nDocument: ${documentContent}`)
     }
 
-    if (
-      mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      mimeType === "application/msword"
-    ) {
-      const result = await mammoth.extractRawText({ buffer })
-      return result.value
+    let summary: string | null = null
+    let keywords: string[] | null = null
+    let sentiment: string | null = null
+    let extractedData: Record<string, any> | null = null
+
+    if (rawResponse) {
+      try {
+        // Attempt to parse as JSON
+        const parsedResult = JSON.parse(rawResponse)
+        summary = parsedResult.summary || null
+        keywords = parsedResult.keywords
+          ? Array.isArray(parsedResult.keywords)
+            ? parsedResult.keywords
+            : parsedResult.keywords.split(",").map((k: string) => k.trim())
+          : null
+        sentiment = parsedResult.sentiment || null
+        extractedData = parsedResult.extractedData || null
+      } catch (jsonError) {
+        // If not JSON, treat the whole response as summary
+        summary = rawResponse
+        console.warn("AI response was not valid JSON. Treating as plain text summary.", jsonError)
+      }
     }
 
-    if (
-      mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-      mimeType === "application/vnd.ms-excel"
-    ) {
-      const workbook = XLSX.read(buffer, { type: "buffer" })
-      let text = ""
-
-      workbook.SheetNames.forEach((sheetName) => {
-        const sheet = workbook.Sheets[sheetName]
-        const sheetText = XLSX.utils.sheet_to_txt(sheet)
-        text += `Sheet: ${sheetName}\n${sheetText}\n\n`
-      })
-
-      return text
+    return {
+      summary,
+      keywords,
+      sentiment,
+      extractedData,
+      rawResponse,
+      modelUsed,
     }
-
-    if (mimeType.startsWith("text/")) {
-      return buffer.toString("utf-8")
-    }
-
-    throw new Error(`Unsupported file type: ${mimeType}`)
   } catch (error) {
-    console.error("Text extraction error:", error)
-    throw new Error(`Failed to extract text from ${filename}`)
+    console.error("Error during document analysis:", error)
+    return {
+      summary: null,
+      keywords: null,
+      sentiment: null,
+      extractedData: null,
+      rawResponse: null,
+      modelUsed: "none",
+    }
   }
-}
-
-export function validateFileType(mimeType: string): boolean {
-  const allowedTypes = [
-    "application/pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    "application/vnd.ms-powerpoint",
-    "text/plain",
-    "text/csv",
-  ]
-
-  return allowedTypes.includes(mimeType)
-}
-
-export function getFileExtension(filename: string): string {
-  return filename.split(".").pop()?.toLowerCase() || ""
 }

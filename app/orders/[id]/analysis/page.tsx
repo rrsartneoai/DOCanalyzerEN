@@ -1,513 +1,209 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { redirect } from "next/navigation"
+import { getSupabaseServerClient } from "@/lib/supabase"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  FileText,
-  BarChart3,
-  TrendingUp,
-  AlertTriangle,
-  CheckCircle,
-  Download,
-  ArrowLeft,
-  Brain,
-  Target,
-  Lightbulb,
-} from "lucide-react"
-import Link from "next/link"
-import { useTranslation } from "@/lib/i18n"
+import { getDictionary } from "@/lib/i18n"
+import { analyzeDocument } from "@/lib/document-processor"
+import { Loader2Icon } from "lucide-react"
 
-interface AnalysisData {
-  orderId: string
-  title: string
-  analysisType: string
-  status: string
-  documents: Array<{
+interface AnalysisPageProps {
+  params: {
     id: string
-    original_name: string
-    file_size: number
-    file_type: string
-  }>
-  analyses: Array<{
-    id: string
-    results: {
-      summary: string
-      keyPoints: string[]
-      sentiment?: string
-      entities?: Array<{
-        text: string
-        type: string
-        confidence: number
-      }>
-      financialData?: Array<{
-        metric: string
-        value: string
-        context: string
-      }>
-      riskFactors?: string[]
-      recommendations?: string[]
-      confidenceScore: number
-    }
-    confidence_score: number
-    created_at: string
-  }>
-  summary: {
-    totalDocuments: number
-    averageConfidence: number
-    completedAt: string | null
   }
 }
 
-export default function AnalysisPage({ params }: { params: { id: string } }) {
-  const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState("")
-  const [language, setLanguage] = useState("pl")
+export default async function AnalysisPage({ params }: AnalysisPageProps) {
+  const { id: orderId } = params
+  const supabase = getSupabaseServerClient()
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+  const dict = getDictionary("en") // Or dynamically get locale
 
-  useEffect(() => {
-    const savedLanguage = localStorage.getItem("language") || "pl"
-    setLanguage(savedLanguage)
-  }, [])
+  if (userError || !user) {
+    redirect("/auth/login")
+  }
 
-  const { t } = useTranslation(language)
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .eq("user_id", user.id)
+    .single()
 
-  useEffect(() => {
-    const fetchAnalysis = async () => {
-      try {
-        const token = localStorage.getItem("token")
-        if (!token) {
-          window.location.href = "/auth/login"
-          return
-        }
+  if (orderError || !order) {
+    console.error("Error fetching order:", orderError)
+    return <div className="p-4 text-center text-destructive">{dict.orders.orderNotFound}</div>
+  }
 
-        const response = await fetch(`/api/orders/${params.id}/analysis`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
+  const { data: documents, error: documentsError } = await supabase
+    .from("documents")
+    .select("*")
+    .eq("order_id", order.id)
+    .order("uploaded_at", { ascending: true })
 
-        const data = await response.json()
-        if (response.ok) {
-          setAnalysisData(data.analysis)
-        } else {
-          setError(data.message || t("analysis_not_found"))
-        }
-      } catch (err) {
-        setError(t("network_error"))
-      } finally {
-        setIsLoading(false)
-      }
+  if (documentsError) {
+    console.error("Error fetching documents:", documentsError)
+    return <div className="p-4 text-center text-destructive">{dict.common.error}</div>
+  }
+
+  const documentToAnalyze = documents[0] // For simplicity, analyze the first document
+
+  let analysisResult = documentToAnalyze?.analysis_result as ReturnType<typeof analyzeDocument> extends Promise<infer T>
+    ? T
+    : any
+
+  // If analysis is pending or not started, trigger it
+  if (
+    documentToAnalyze &&
+    (documentToAnalyze.analysis_status === "pending" || documentToAnalyze.analysis_status === "analyzing")
+  ) {
+    // In a real application, this would be triggered by a server action or webhook
+    // after the file is fully processed and ready for AI.
+    // For this example, we'll simulate a direct analysis if not already completed.
+    // NOTE: This is a simplified client-side trigger. For large files or complex analysis,
+    // you'd want a background job/server action.
+    console.log(`Triggering analysis for document: ${documentToAnalyze.file_name}`)
+    // Simulate fetching content (in a real app, you'd fetch from storage)
+    const dummyContent = `This is a sample document about the importance of renewable energy. Key topics include solar power, wind energy, and sustainable practices. The sentiment is overwhelmingly positive, highlighting the benefits for the environment and economy. Dates mentioned: 2023-01-15, 2024-03-20. Costs: $1200, $500.`
+
+    // This is a server component, so we can directly call analyzeDocument
+    // However, if the analysis is long-running, you'd want to update status via a database
+    // and revalidatePath. For this demo, we'll just show the result if available.
+    if (documentToAnalyze.analysis_status === "pending") {
+      // Update status to 'analyzing' in DB (not shown here for brevity)
+      // await supabase.from('documents').update({ analysis_status: 'analyzing' }).eq('id', documentToAnalyze.id);
     }
 
-    fetchAnalysis()
+    // Perform analysis (this will run on the server)
+    const result = await analyzeDocument(dummyContent, { model: "openai" }) // Or 'gemini'
+    analysisResult = result
 
-    // Poll for updates if analysis is still processing
-    const interval = setInterval(() => {
-      if (analysisData?.status === "processing") {
-        fetchAnalysis()
-      }
-    }, 5000)
-
-    return () => clearInterval(interval)
-  }, [params.id, analysisData?.status, t])
-
-  const getSentimentColor = (sentiment?: string) => {
-    switch (sentiment) {
-      case "positive":
-        return "text-green-600 bg-green-100"
-      case "negative":
-        return "text-red-600 bg-red-100"
-      case "neutral":
-        return "text-gray-600 bg-gray-100"
-      default:
-        return "text-gray-600 bg-gray-100"
-    }
+    // Update analysis_result and analysis_status in DB (not shown here for brevity)
+    // await supabase.from('documents').update({ analysis_status: 'completed', analysis_result: result }).eq('id', documentToAnalyze.id);
+    // revalidatePath(`/orders/${orderId}/analysis`);
   }
-
-  const getSentimentText = (sentiment?: string) => {
-    switch (sentiment) {
-      case "positive":
-        return t("positive")
-      case "negative":
-        return t("negative")
-      case "neutral":
-        return t("neutral")
-      default:
-        return t("neutral")
-    }
-  }
-
-  const getConfidenceColor = (score: number) => {
-    if (score >= 0.8) return "text-green-600"
-    if (score >= 0.6) return "text-yellow-600"
-    return "text-red-600"
-  }
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "completed":
-        return t("completed")
-      case "processing":
-        return t("processing")
-      case "pending":
-        return t("pending")
-      case "failed":
-        return t("failed")
-      default:
-        return status
-    }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">{t("loading")}</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error || !analysisData) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>{error || t("analysis_not_found")}</AlertDescription>
-            </Alert>
-            <Button className="w-full mt-4" asChild>
-              <Link href="/dashboard">{t("back_to_dashboard")}</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  const combinedResults = analysisData.analyses.reduce(
-    (acc, analysis) => {
-      const results = analysis.results
-      return {
-        summary: acc.summary + "\n\n" + results.summary,
-        keyPoints: [...acc.keyPoints, ...results.keyPoints],
-        entities: [...(acc.entities || []), ...(results.entities || [])],
-        financialData: [...(acc.financialData || []), ...(results.financialData || [])],
-        riskFactors: [...(acc.riskFactors || []), ...(results.riskFactors || [])],
-        recommendations: [...(acc.recommendations || []), ...(results.recommendations || [])],
-        sentiment: results.sentiment || acc.sentiment,
-        confidenceScore: Math.max(acc.confidenceScore, results.confidenceScore),
-      }
-    },
-    {
-      summary: "",
-      keyPoints: [] as string[],
-      entities: [] as any[],
-      financialData: [] as any[],
-      riskFactors: [] as string[],
-      recommendations: [] as string[],
-      sentiment: "neutral",
-      confidenceScore: 0,
-    },
-  )
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center">
-            <Button variant="ghost" size="sm" asChild className="mr-4">
-              <Link href="/dashboard">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                {t("back_to_dashboard")}
-              </Link>
-            </Button>
-            <div>
-              <h1 className="text-xl font-semibold">{analysisData.title}</h1>
-              <p className="text-sm text-gray-600">
-                {t("analysis_results")} • {t(analysisData.analysisType.replace("-", "_"))}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Badge
-              className={
-                analysisData.status === "completed"
-                  ? "bg-green-100 text-green-800"
-                  : analysisData.status === "processing"
-                    ? "bg-blue-100 text-blue-800"
-                    : "bg-yellow-100 text-yellow-800"
-              }
-            >
-              {getStatusText(analysisData.status)}
-            </Badge>
-            <Button size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              {t("export_report")}
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <div className="container mx-auto px-4 py-8">
-        {/* Status Alert */}
-        {analysisData.status === "processing" && (
-          <Alert className="mb-6">
-            <Brain className="h-4 w-4" />
-            <AlertDescription>{t("analysis_in_progress")}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Overview Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t("documents")}</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{analysisData.summary.totalDocuments}</div>
-              <p className="text-xs text-muted-foreground">{t("files_analyzed")}</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t("confidence")}</CardTitle>
-              <Target className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className={`text-2xl font-bold ${getConfidenceColor(analysisData.summary.averageConfidence)}`}>
-                {Math.round(analysisData.summary.averageConfidence * 100)}%
+    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-64px)] p-4 md:p-8">
+      <div className="w-full max-w-4xl space-y-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-2xl font-bold">{dict.orders.documentAnalysis}</CardTitle>
+            <CardDescription>
+              {documentToAnalyze
+                ? `Analysis for: ${documentToAnalyze.file_name}`
+                : "No document selected for analysis."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {!documentToAnalyze ? (
+              <div className="text-center text-muted-foreground p-4">
+                <p>{dict.orders.noDocuments}</p>
+                <Button className="mt-4" onClick={() => redirect(`/orders/${orderId}/upload`)}>
+                  {dict.orders.uploadDocument}
+                </Button>
               </div>
-              <p className="text-xs text-muted-foreground">{t("average_confidence")}</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t("key_insights")}</CardTitle>
-              <Lightbulb className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{combinedResults.keyPoints.length}</div>
-              <p className="text-xs text-muted-foreground">{t("insights_found")}</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t("sentiment")}</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <Badge className={getSentimentColor(combinedResults.sentiment)}>
-                {getSentimentText(combinedResults.sentiment)}
-              </Badge>
-              <p className="text-xs text-muted-foreground mt-1">{t("overall_tone")}</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Analysis Results */}
-        <Tabs defaultValue="summary" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="summary">{t("summary")}</TabsTrigger>
-            <TabsTrigger value="insights">{t("key_insights")}</TabsTrigger>
-            <TabsTrigger value="data">{t("data_points")}</TabsTrigger>
-            <TabsTrigger value="risks">{t("risk_factors")}</TabsTrigger>
-            <TabsTrigger value="recommendations">{t("recommendations")}</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="summary" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t("executive_summary")}</CardTitle>
-                <CardDescription>{t("comprehensive_overview")}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="prose max-w-none">
-                  <p className="text-gray-700 leading-relaxed">{combinedResults.summary.trim()}</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium">{dict.common.analysisStatus}:</p>
+                  <Badge
+                    className={
+                      documentToAnalyze.analysis_status === "completed"
+                        ? "bg-green-500"
+                        : documentToAnalyze.analysis_status === "analyzing"
+                          ? "bg-yellow-500"
+                          : "bg-gray-500"
+                    }
+                  >
+                    {documentToAnalyze.analysis_status}
+                    {documentToAnalyze.analysis_status === "analyzing" && (
+                      <Loader2Icon className="ml-2 h-4 w-4 animate-spin" />
+                    )}
+                  </Badge>
                 </div>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>{t("document_overview")}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {analysisData.documents.map((doc, index) => (
-                    <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <FileText className="h-5 w-5 text-blue-600" />
-                        <div>
-                          <p className="font-medium">{doc.original_name}</p>
-                          <p className="text-sm text-gray-600">
-                            {(doc.file_size / 1024 / 1024).toFixed(2)} {t("mb")} • {doc.file_type}
-                          </p>
-                        </div>
-                      </div>
-                      <Badge variant="outline">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        {t("analyzed")}
-                      </Badge>
+                {analysisResult?.summary && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Summary</h3>
+                    <Textarea value={analysisResult.summary} readOnly rows={5} className="resize-none" />
+                  </div>
+                )}
+
+                {analysisResult?.keywords && analysisResult.keywords.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Keywords</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {analysisResult.keywords.map((keyword, index) => (
+                        <Badge key={index} variant="secondary">
+                          {keyword}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {analysisResult?.sentiment && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Sentiment</h3>
+                    <Badge
+                      className={
+                        analysisResult.sentiment.toLowerCase().includes("positive")
+                          ? "bg-green-500"
+                          : analysisResult.sentiment.toLowerCase().includes("negative")
+                            ? "bg-red-500"
+                            : "bg-blue-500"
+                      }
+                    >
+                      {analysisResult.sentiment}
+                    </Badge>
+                  </div>
+                )}
+
+                {analysisResult?.extractedData && Object.keys(analysisResult.extractedData).length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Extracted Data</h3>
+                    <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+                      {JSON.stringify(analysisResult.extractedData, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                {analysisResult?.rawResponse && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Raw AI Response</h3>
+                    <Textarea
+                      value={analysisResult.rawResponse}
+                      readOnly
+                      rows={10}
+                      className="resize-none font-mono text-xs"
+                    />
+                  </div>
+                )}
+
+                {!analysisResult?.summary && documentToAnalyze.analysis_status === "completed" && (
+                  <div className="text-center text-muted-foreground p-4">
+                    <p>No analysis results available for this document.</p>
+                  </div>
+                )}
+
+                {documentToAnalyze.analysis_status === "pending" ||
+                  (documentToAnalyze.analysis_status === "analyzing" && (
+                    <div className="text-center text-muted-foreground p-4">
+                      <Loader2Icon className="h-8 w-8 animate-spin mx-auto mb-2" />
+                      <p>{dict.orders.analyzingDocument}</p>
                     </div>
                   ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="insights" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t("key_insights")}</CardTitle>
-                <CardDescription>{t("important_findings")}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {combinedResults.keyPoints.map((point, index) => (
-                    <div key={index} className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
-                      <Lightbulb className="h-5 w-5 text-blue-600 mt-0.5" />
-                      <p className="text-gray-700">{point}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {combinedResults.entities && combinedResults.entities.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t("entities_identified")}</CardTitle>
-                  <CardDescription>{t("key_entities")}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {combinedResults.entities.map((entity, index) => (
-                      <div key={index} className="p-3 border rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium">{entity.text}</span>
-                          <Badge variant="outline">{entity.type}</Badge>
-                        </div>
-                        <Progress value={entity.confidence * 100} className="h-2" />
-                        <p className="text-xs text-gray-600 mt-1">
-                          {Math.round(entity.confidence * 100)}% {t("confidence")}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              </>
             )}
-          </TabsContent>
-
-          <TabsContent value="data" className="space-y-6">
-            {combinedResults.financialData && combinedResults.financialData.length > 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t("financial_data")}</CardTitle>
-                  <CardDescription>{t("financial_metrics")}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {combinedResults.financialData.map((data, index) => (
-                      <div key={index} className="p-4 border rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-medium">{data.metric}</h4>
-                          <span className="text-lg font-bold text-green-600">{data.value}</span>
-                        </div>
-                        <p className="text-sm text-gray-600">{data.context}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-center py-8">
-                    <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">{t("no_data_points")}</p>
-                    <p className="text-sm text-gray-500 mt-2">{t("normal_depending")}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          <TabsContent value="risks" className="space-y-6">
-            {combinedResults.riskFactors && combinedResults.riskFactors.length > 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t("risk_factors")}</CardTitle>
-                  <CardDescription>{t("potential_risks")}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {combinedResults.riskFactors.map((risk, index) => (
-                      <div key={index} className="flex items-start space-x-3 p-3 bg-red-50 rounded-lg">
-                        <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
-                        <p className="text-gray-700">{risk}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-center py-8">
-                    <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" />
-                    <p className="text-gray-600">{t("no_risk_factors")}</p>
-                    <p className="text-sm text-gray-500 mt-2">{t("documents_appear_free")}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          <TabsContent value="recommendations" className="space-y-6">
-            {combinedResults.recommendations && combinedResults.recommendations.length > 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t("recommendations")}</CardTitle>
-                  <CardDescription>{t("actionable_recommendations")}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {combinedResults.recommendations.map((recommendation, index) => (
-                      <div key={index} className="flex items-start space-x-3 p-3 bg-green-50 rounded-lg">
-                        <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
-                        <p className="text-gray-700">{recommendation}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-center py-8">
-                    <Lightbulb className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">{t("no_recommendations")}</p>
-                    <p className="text-sm text-gray-500 mt-2">{t("no_specific_actions")}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-        </Tabs>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

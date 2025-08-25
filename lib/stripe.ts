@@ -1,50 +1,61 @@
 import Stripe from "stripe"
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-06-20",
-})
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY
 
-export const ANALYSIS_TYPES = {
-  "content-analysis": {
-    name: "Content Analysis",
-    price: 1999, // $19.99 in cents
-    description: "Extract and analyze text content, structure, and key information",
-  },
-  "financial-review": {
-    name: "Financial Review",
-    price: 2999, // $29.99 in cents
-    description: "Analyze financial documents, extract numbers, and identify trends",
-  },
-  "legal-compliance": {
-    name: "Legal Compliance",
-    price: 3999, // $39.99 in cents
-    description: "Review legal documents for compliance and risk assessment",
-  },
-  "data-extraction": {
-    name: "Data Extraction",
-    price: 2499, // $24.99 in cents
-    description: "Extract structured data from unstructured documents",
-  },
-  "sentiment-analysis": {
-    name: "Sentiment Analysis",
-    price: 1999, // $19.99 in cents
-    description: "Analyze sentiment and emotional tone in documents",
-  },
-  "custom-analysis": {
-    name: "Custom Analysis",
-    price: 4999, // $49.99 in cents
-    description: "Custom analysis based on your specific requirements",
-  },
-} as const
+if (!stripeSecretKey) {
+  console.error("STRIPE_SECRET_KEY is not set. Stripe features will be unavailable.")
+}
 
-export function calculateOrderPrice(
-  analysisType: keyof typeof ANALYSIS_TYPES,
-  fileCount: number,
-  priority: "standard" | "urgent",
-): number {
-  const basePrice = ANALYSIS_TYPES[analysisType].price
-  const fileMultiplier = Math.max(1, fileCount)
-  const priorityMultiplier = priority === "urgent" ? 1.5 : 1
+export const stripe = stripeSecretKey
+  ? new Stripe(stripeSecretKey, {
+      apiVersion: "2024-06-20", // Use the latest API version
+      typescript: true,
+    })
+  : null
 
-  return Math.round(basePrice * fileMultiplier * priorityMultiplier)
+export async function createPaymentIntent(amount: number, currency = "usd", metadata?: Stripe.MetadataParam) {
+  if (!stripe) {
+    throw new Error("Stripe is not initialized. STRIPE_SECRET_KEY is missing.")
+  }
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount * 100), // Amount in cents
+      currency: currency,
+      automatic_payment_methods: { enabled: true },
+      metadata: metadata,
+    })
+    return paymentIntent
+  } catch (error) {
+    console.error("Error creating payment intent:", error)
+    throw error
+  }
+}
+
+export async function retrievePaymentIntent(paymentIntentId: string) {
+  if (!stripe) {
+    throw new Error("Stripe is not initialized. STRIPE_SECRET_KEY is missing.")
+  }
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+    return paymentIntent
+  } catch (error) {
+    console.error("Error retrieving payment intent:", error)
+    throw error
+  }
+}
+
+export async function constructEventFromWebhook(body: Buffer, signature: string | string[], secret: string) {
+  if (!stripe) {
+    throw new Error("Stripe is not initialized. STRIPE_SECRET_KEY is missing.")
+  }
+
+  try {
+    const event = stripe.webhooks.constructEvent(body, signature, secret)
+    return event
+  } catch (error) {
+    console.error("Error constructing Stripe webhook event:", error)
+    throw error
+  }
 }
